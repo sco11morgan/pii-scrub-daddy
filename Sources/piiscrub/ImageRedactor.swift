@@ -119,7 +119,13 @@ struct ImageRedactor {
         }
         if !currentLine.isEmpty { lines.append(currentLine) }
 
-        // For each line, build a normalised string + charMap, then detect PII
+        // For each line, build a normalised string + charMap, then detect PII.
+        // In addition to whitespace, strip "|" and box-drawing characters that
+        // OCR commonly produces from table grid lines in scanned forms — these
+        // appear between individual digit boxes and would otherwise break
+        // runs of digits (e.g. "555144|3333" failing to match \d{9}).
+        let ocrGridNoise: Set<Character> = ["|", "│", "║", "┃", "╎", "╏"]
+
         for line in lines {
             var normalizedText = ""
             var charMap: [CharInfo] = []
@@ -128,7 +134,7 @@ struct ImageRedactor {
                 var idx = item.text.string.startIndex
                 while idx < item.text.string.endIndex {
                     let c = item.text.string[idx]
-                    if !c.isWhitespace {
+                    if !c.isWhitespace && !ocrGridNoise.contains(c) {
                         normalizedText.append(c)
                         charMap.append(CharInfo(pairIndex: item.origIndex, charIndex: idx))
                     }
@@ -168,6 +174,60 @@ struct ImageRedactor {
                 if !boxes.contains(where: { overlapping($0, pixelBox) }) {
                     if verbose { print("  Redacting [spaced \(match.type.rawValue)]: \"\(matchedText)\"") }
                     boxes.append(pixelBox)
+                }
+            }
+
+            // Pass 3 — digit-run detection.
+            // OCR on gridded forms often inserts extra characters (e.g. "1" from a thin
+            // box border) between digit cells, inflating the run length by 1–2 and
+            // defeating the (?<!\d)\d{N}(?!\d) word-boundary guards in PIIDetector.
+            // For each maximal digit run that is slightly longer than a known pattern
+            // length, treat the whole run as a match — the union box covers all the
+            // digit cells regardless of the extra character(s).
+            let digitRunSpecs: [(PIIType, exactLen: Int, maxExtra: Int)] = [
+                (.ssn,        9,  2),
+                (.creditCard, 16, 2),
+            ]
+            if let digitRunRx = try? NSRegularExpression(pattern: #"\d+"#) {
+                let nsNorm    = normalizedText as NSString
+                let fullRange = NSRange(location: 0, length: nsNorm.length)
+                for result in digitRunRx.matches(in: normalizedText, range: fullRange) {
+                    let runStart  = result.range.location
+                    let runLength = result.range.length
+                    for (piiType, exactLen, maxExtra) in digitRunSpecs {
+                        guard types.contains(piiType) else { continue }
+                        // Only fire when the run is longer than expected (normal pass
+                        // handles exact-length runs) but within the noise tolerance.
+                        guard runLength > exactLen && runLength <= exactLen + maxExtra else { continue }
+
+                        var spanByPair: [Int: (start: String.Index, end: String.Index)] = [:]
+                        for ni in runStart..<(runStart + runLength) {
+                            guard ni < charMap.count else { continue }
+                            let info = charMap[ni]
+                            if let existing = spanByPair[info.pairIndex] {
+                                spanByPair[info.pairIndex] = (existing.start, info.charIndex)
+                            } else {
+                                spanByPair[info.pairIndex] = (info.charIndex, info.charIndex)
+                            }
+                        }
+
+                        var unionBox: CGRect? = nil
+                        for (pi, span) in spanByPair {
+                            let (obs, text) = pairs[pi]
+                            let s = text.string
+                            let endExclusive = s.index(after: span.end)
+                            let normBox = (try? text.boundingBox(for: span.start..<endExclusive))?.boundingBox ?? obs.boundingBox
+                            unionBox = unionBox.map { $0.union(normBox) } ?? normBox
+                        }
+
+                        guard let box = unionBox else { continue }
+                        let pixelBox = visionToPixel(box, pixelSize: pixelSize)
+
+                        if !boxes.contains(where: { overlapping($0, pixelBox) }) {
+                            if verbose { print("  Redacting [digit-run \(piiType.rawValue)]: \(runLength)-digit run (expected \(exactLen))") }
+                            boxes.append(pixelBox)
+                        }
+                    }
                 }
             }
         }
