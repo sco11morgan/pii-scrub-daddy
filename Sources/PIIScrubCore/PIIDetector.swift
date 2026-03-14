@@ -1,12 +1,12 @@
 import Foundation
 import NaturalLanguage
 
-struct PIIMatch {
-    let range: Range<String.Index>
-    let type: PIIType
+public struct PIIMatch {
+    public let range: Range<String.Index>
+    public let type: PIIType
 }
 
-enum PIIType: String {
+public enum PIIType: String {
     case ssn = "SSN"
     case phone = "Phone"
     case email = "Email"
@@ -15,11 +15,11 @@ enum PIIType: String {
     case person = "Person"
     case address = "Address"
 
-    static let defaults: Set<PIIType> = [.ssn, .phone, .email, .creditCard]
-    static let all: Set<PIIType>      = [.ssn, .phone, .email, .creditCard, .zipCode, .person, .address]
+    public static let defaults: Set<PIIType> = [.ssn, .phone, .email, .creditCard]
+    public static let all: Set<PIIType>      = [.ssn, .phone, .email, .creditCard, .zipCode, .person, .address]
 }
 
-struct PIIDetector {
+public struct PIIDetector {
     // Regex patterns keyed by type
     private static let patterns: [(PIIType, String)] = [
         (.ssn,        #"(?<!\d)\d{3}-\d{2}-\d{4}(?!\d)"#),
@@ -30,7 +30,7 @@ struct PIIDetector {
         (.zipCode,    #"(?<!\d)\d{5}(?:-\d{4})?(?!\d)"#),
     ]
 
-    static func detect(in text: String, types: Set<PIIType> = PIIType.defaults) -> [PIIMatch] {
+    public static func detect(in text: String, types: Set<PIIType> = PIIType.defaults) -> [PIIMatch] {
         var matches: [PIIMatch] = []
 
         // Regex-based detection

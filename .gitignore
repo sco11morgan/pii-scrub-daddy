@@ -1,5 +1,6 @@
 .build/
 test/
+Tests/PIIScrubDaddyTests/Fixtures/
 *.o
 *.d
 *.swp

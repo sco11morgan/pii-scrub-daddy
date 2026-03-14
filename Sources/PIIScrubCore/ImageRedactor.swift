@@ -4,13 +4,13 @@ import Vision
 import ImageIO
 import UniformTypeIdentifiers
 
-struct ImageRedactor {
+public struct ImageRedactor {
 
-    static let supportedExtensions: Set<String> = [
+    public static let supportedExtensions: Set<String> = [
         "png", "jpg", "jpeg", "tiff", "tif", "heic", "heif", "bmp", "webp"
     ]
 
-    static func redact(inputURL: URL, outputURL: URL, types: Set<PIIType> = PIIType.defaults, verbose: Bool = false) throws {
+    public static func redact(inputURL: URL, outputURL: URL, types: Set<PIIType> = PIIType.defaults, verbose: Bool = false) throws {
         guard let source = CGImageSourceCreateWithURL(inputURL as CFURL, nil),
               let image  = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
             throw RedactError.cannotLoadImage(inputURL.path)

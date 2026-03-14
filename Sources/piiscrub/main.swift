@@ -1,4 +1,5 @@
 import Foundation
+import PIIScrubCore
 
 // MARK: - Argument parsing
 

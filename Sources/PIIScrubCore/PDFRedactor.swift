@@ -4,9 +4,9 @@ import Vision
 import CoreGraphics
 import AppKit
 
-struct PDFRedactor {
+public struct PDFRedactor {
 
-    static func redact(inputURL: URL, outputURL: URL, types: Set<PIIType> = PIIType.defaults, verbose: Bool = false) throws {
+    public static func redact(inputURL: URL, outputURL: URL, types: Set<PIIType> = PIIType.defaults, verbose: Bool = false) throws {
         guard let document = PDFDocument(url: inputURL) else {
             throw RedactError.cannotLoadPDF(inputURL.path)
         }
@@ -82,19 +82,27 @@ struct PDFRedactor {
     // MARK: - PII location
 
     /// Returns redaction boxes in bitmap coordinates (top-left origin).
-    /// Prefers PDFKit character bounds for digital PDFs; falls back to Vision OCR for scanned PDFs.
+    /// Prefers PDFKit character bounds for digital PDFs; falls back to Vision OCR for scanned PDFs
+    /// or PDFs where the text layer uses a custom font encoding that defeats text extraction.
     private static func findRedactionBoxes(page: PDFPage, pixelSize: CGSize, scale: CGFloat,
                                            mediaBox: CGRect, renderedImage: CGImage,
                                            types: Set<PIIType>, verbose: Bool) -> [CGRect] {
         // Try PDFKit text extraction first (works for digital/searchable PDFs)
         if let pageText = page.string, !pageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             if verbose { print("  Using PDFKit text extraction") }
-            return pdfKitRedactionBoxes(page: page, pageText: pageText, mediaBox: mediaBox,
-                                        scale: scale, types: types, verbose: verbose)
+            let boxes = pdfKitRedactionBoxes(page: page, pageText: pageText, mediaBox: mediaBox,
+                                             scale: scale, types: types, verbose: verbose)
+            if !boxes.isEmpty { return boxes }
+
+            // PDFKit extracted text but found no PII — the font may use a custom encoding
+            // where character codes for digits/names map to wrong Unicode values, making the
+            // text appear garbled or digit-free even though PII is visually present.
+            // Fall through to Vision OCR to catch what text extraction missed.
+            if verbose { print("  No PII in text layer (possible custom font encoding), trying Vision OCR") }
+        } else {
+            if verbose { print("  No text layer found, using Vision OCR") }
         }
 
-        // Fallback: Vision OCR for scanned/image PDFs
-        if verbose { print("  No text layer found, falling back to Vision OCR") }
         return (try? ocrRedactionBoxes(image: renderedImage, pixelSize: pixelSize, types: types, verbose: verbose)) ?? []
     }
 
@@ -333,13 +341,13 @@ struct PDFRedactor {
 
 // MARK: - Errors
 
-enum RedactError: LocalizedError {
+public enum RedactError: LocalizedError {
     case cannotLoadPDF(String)
     case cannotLoadImage(String)
     case renderFailed(Int)
     case saveFailed(String)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .cannotLoadPDF(let path):    return "Cannot load PDF: \(path)"
         case .cannotLoadImage(let path):  return "Cannot load image: \(path)"

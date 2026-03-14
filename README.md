@@ -1,5 +1,9 @@
 # pii-scrub-daddy
 
+<p align="center">
+  <img src="docs/banner-scrub-daddy.png" alt="pii-scrub-daddy" />
+</p>
+
 A macOS command-line tool that automatically detects and redacts PII from PDF files and images. Produces a flattened output — no hidden text layer.
 
 ## Features
@@ -106,6 +110,16 @@ invoices/
 2. `Vision` OCR scans the image for text and locates PII
 3. Black rectangles are painted over each match
 4. The result is saved in the same format as the input
+
+## Testing
+
+```sh
+swift test                              # full suite (requires fixtures)
+swift test --filter PIIDetectorTests   # unit tests only, no fixtures needed
+```
+
+Integration tests (`ImageRedactorTests`, `PDFRedactorTests`) require fixture files in
+`Tests/PIIScrubDaddyTests/Fixtures/` — see the README in that directory.
 
 ## Uninstall
 
