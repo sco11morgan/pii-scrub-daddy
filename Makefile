@@ -1,4 +1,4 @@
-BINARY   = redact-pdf
+BINARY   = piiscrub
 BUILD    = .build/release/$(BINARY)
 PREFIX  ?= /usr/local
 

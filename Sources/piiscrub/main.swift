@@ -5,9 +5,9 @@ import Foundation
 func printUsage() {
     print("""
     Usage:
-      redact-pdf <input.pdf> <output.pdf> [--all] [--verbose]
-      redact-pdf <input.png> <output.png> [--all] [--verbose]
-      redact-pdf <directory>             [--all] [--verbose]
+      piiscrub <input.pdf> <output.pdf> [--all] [--verbose]
+      piiscrub <input.png> <output.png> [--all] [--verbose]
+      piiscrub <directory>              [--all] [--verbose]
 
     Single file:
       Redacts <input> and writes to <output>.
@@ -22,9 +22,9 @@ func printUsage() {
       --verbose   Print each redacted item and page progress
 
     Examples:
-      redact-pdf document.pdf redacted.pdf --all --verbose
-      redact-pdf photo.png redacted.png
-      redact-pdf ~/Documents/invoices --verbose
+      piiscrub document.pdf redacted.pdf --all --verbose
+      piiscrub photo.png redacted.png
+      piiscrub ~/Documents/invoices --verbose
     """)
 }
 

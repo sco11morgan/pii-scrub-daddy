@@ -1,4 +1,4 @@
-# redact-pdf
+# pii-scrub-daddy
 
 A macOS command-line tool that automatically detects and redacts PII from PDF files and images. Produces a flattened output — no hidden text layer.
 
@@ -33,15 +33,15 @@ PREFIX=~/.local make install  # custom prefix
 
 **Single file**
 ```sh
-redact-pdf <input.pdf> <output.pdf> [--all] [--verbose]
-redact-pdf <input.png> <output.png> [--all] [--verbose]
+piiscrub <input.pdf> <output.pdf> [--all] [--verbose]
+piiscrub <input.png> <output.png> [--all] [--verbose]
 ```
 
 Supported image formats: `png`, `jpg`, `jpeg`, `tiff`, `tif`, `heic`, `heif`, `bmp`, `webp`
 
 **Directory** — redacts all PDFs and images in the directory, writing `redacted_<name>` into `<directory>/output/`
 ```sh
-redact-pdf <directory> [--all] [--verbose]
+piiscrub <directory> [--all] [--verbose]
 ```
 
 **Options**
@@ -68,19 +68,19 @@ redact-pdf <directory> [--all] [--verbose]
 
 ```sh
 # Single PDF — redact SSN, phone, email, credit card (default)
-redact-pdf report.pdf redacted.pdf
+piiscrub report.pdf redacted.pdf
 
 # Single image — redact everything
-redact-pdf scan.png redacted.png --all --verbose
+piiscrub scan.png redacted.png --all --verbose
 
 # Single PDF — redact everything
-redact-pdf report.pdf redacted.pdf --all --verbose
+piiscrub report.pdf redacted.pdf --all --verbose
 
 # Directory — batch redact all PDFs and images
-redact-pdf ~/Documents/invoices
+piiscrub ~/Documents/invoices
 
 # Directory — batch redact with all PII types
-redact-pdf ~/Documents/invoices --all --verbose
+piiscrub ~/Documents/invoices --all --verbose
 ```
 
 Directory output structure:

@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "redact-pdf",
+    name: "pii-scrub-daddy",
     platforms: [.macOS(.v13)],
     targets: [
         .executableTarget(
-            name: "redact-pdf",
-            path: "Sources/redact-pdf"
+            name: "piiscrub",
+            path: "Sources/piiscrub"
         )
     ]
 )
