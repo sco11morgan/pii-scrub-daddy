@@ -22,12 +22,12 @@ enum PIIType: String {
 struct PIIDetector {
     // Regex patterns keyed by type
     private static let patterns: [(PIIType, String)] = [
-        (.ssn,        #"\b\d{3}-\d{2}-\d{4}\b"#),
-        (.ssn,        #"\b\d{9}\b"#),
-        (.phone,      #"\b(\+1[\s.-]?)?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b"#),
-        (.email,      #"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b"#),
-        (.creditCard, #"\b(?:\d{4}[\s\-]){3}\d{4}\b"#),
-        (.zipCode,    #"\b\d{5}(?:-\d{4})?\b"#),
+        (.ssn,        #"(?<!\d)\d{3}-\d{2}-\d{4}(?!\d)"#),
+        (.ssn,        #"(?<!\d)\d{9}(?!\d)"#),
+        (.phone,      #"(?<!\d)(\+1[\s.-]?)?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}(?!\d)"#),
+        (.email,      #"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"#),
+        (.creditCard, #"(?<!\d)(?:\d{4}[\s\-]){3}\d{4}(?!\d)"#),
+        (.zipCode,    #"(?<!\d)\d{5}(?:-\d{4})?(?!\d)"#),
     ]
 
     static func detect(in text: String, types: Set<PIIType> = PIIType.defaults) -> [PIIMatch] {

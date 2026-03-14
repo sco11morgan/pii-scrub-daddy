@@ -101,14 +101,13 @@ struct PDFRedactor {
     private static func pdfKitRedactionBoxes(page: PDFPage, pageText: String, mediaBox: CGRect,
                                              scale: CGFloat, types: Set<PIIType>, verbose: Bool) -> [CGRect] {
         var boxes: [CGRect] = []
-        let piiMatches = PIIDetector.detect(in: pageText, types: types)
 
+        // Pass 1: match against the raw page text (handles normal PDFs)
+        let piiMatches = PIIDetector.detect(in: pageText, types: types)
         for match in piiMatches {
             let matchedText = String(pageText[match.range])
             if verbose { print("  Redacting [\(match.type.rawValue)]: \"\(matchedText)\"") }
 
-            // Use PDFDocument.findString → PDFSelection.bounds to avoid character-index
-            // mismatches caused by synthetic whitespace in page.string.
             guard let doc = page.document else { continue }
             let selections = doc.findString(matchedText, withOptions: [.caseInsensitive])
 
@@ -116,12 +115,10 @@ struct PDFRedactor {
             for sel in selections {
                 guard sel.pages.contains(page) else { continue }
                 found = true
-                let pdfBox = sel.bounds(for: page)  // page space: bottom-left origin
-                let pixelBox = pdfBoxToPixel(pdfBox, mediaBox: mediaBox, scale: scale)
-                boxes.append(pixelBox)
+                let pdfBox = sel.bounds(for: page)
+                boxes.append(pdfBoxToPixel(pdfBox, mediaBox: mediaBox, scale: scale))
             }
 
-            // Fallback: character-index walk if findString missed it
             if !found {
                 let nsRange = NSRange(match.range, in: pageText)
                 var unionBox: CGRect? = nil
@@ -135,7 +132,109 @@ struct PDFRedactor {
                 }
             }
         }
+
+        // Pass 2: normalized match — collapses whitespace so spaced form fields like
+        // "3 7 9 - 7 8 - 3 2 1 8" are detected. Builds an NSString index map so we
+        // can call characterBounds(at:) with the correct original indices.
+        let nsPageText = pageText as NSString
+        var normalizedText = ""
+        var nsIndexMap: [Int] = []  // normalized position → original NSString code-unit index
+        for i in 0..<nsPageText.length {
+            let c = nsPageText.character(at: i)
+            // Skip whitespace (space = 0x20, tab = 0x09, newline = 0x0A, CR = 0x0D, etc.)
+            guard c != 0x20 && c != 0x09 && c != 0x0A && c != 0x0D else { continue }
+            if let scalar = Unicode.Scalar(c) {
+                normalizedText.append(Character(scalar))
+                nsIndexMap.append(i)
+            }
+        }
+
+        let normalizedMatches = PIIDetector.detect(in: normalizedText, types: types)
+        for match in normalizedMatches {
+            let matchedText = String(normalizedText[match.range])
+            let nsNormRange  = NSRange(match.range, in: normalizedText)
+
+            // Reconstruct the original text span (with spaces) so we can use findString,
+            // which returns accurate PDFSelection bounds unlike characterBounds(at:).
+            guard nsNormRange.location < nsIndexMap.count,
+                  nsNormRange.location + nsNormRange.length - 1 < nsIndexMap.count else { continue }
+            let firstOrigIdx = nsIndexMap[nsNormRange.location]
+            let lastOrigIdx  = nsIndexMap[nsNormRange.location + nsNormRange.length - 1]
+            let origSpanRange = NSRange(location: firstOrigIdx, length: lastOrigIdx - firstOrigIdx + 1)
+            let originalSpacedText = nsPageText.substring(with: origSpanRange)
+
+            var pdfBox: CGRect?
+
+            // Prefer findString — it uses the real content stream positions
+            if let doc = page.document {
+                let sels = doc.findString(originalSpacedText, withOptions: [.caseInsensitive])
+                for sel in sels {
+                    guard sel.pages.contains(page) else { continue }
+                    pdfBox = sel.bounds(for: page)
+                    break
+                }
+            }
+
+            // Fall back to union of characterBounds if findString failed
+            if pdfBox == nil {
+                var unionBox: CGRect? = nil
+                for ni in nsNormRange.location..<(nsNormRange.location + nsNormRange.length) {
+                    guard ni < nsIndexMap.count else { continue }
+                    let origIndex = nsIndexMap[ni]
+                    let cb = page.characterBounds(at: origIndex)
+                    guard !cb.isEmpty else { continue }
+                    unionBox = unionBox.map { $0.union(cb) } ?? cb
+                }
+                pdfBox = unionBox
+            }
+
+            guard let finalPdfBox = pdfBox else { continue }
+            let pixelBox = pdfBoxToPixel(finalPdfBox, mediaBox: mediaBox, scale: scale)
+
+            // Only add if not already covered by a box from pass 1
+            if !boxes.contains(where: { $0.intersects(pixelBox) && overlapping($0, pixelBox) }) {
+                if verbose { print("  Redacting [spaced \(match.type.rawValue)]: \"\(matchedText)\"") }
+                boxes.append(pixelBox)
+            }
+        }
+
+        // Pass 3: AcroForm widget annotations — fillable form field values are stored
+        // in PDFAnnotation objects and are NOT included in page.string.
+        for annotation in page.annotations {
+            guard let fieldText = annotation.widgetStringValue, !fieldText.isEmpty else { continue }
+
+            // Run detection on raw value and whitespace-collapsed value
+            let collapsed = String(fieldText.filter { !$0.isWhitespace })
+            let candidates = fieldText == collapsed ? [fieldText] : [fieldText, collapsed]
+
+            for text in candidates {
+                let matches = PIIDetector.detect(in: text, types: types)
+                guard !matches.isEmpty else { continue }
+
+                let pdfBox   = annotation.bounds
+                let pixelBox = pdfBoxToPixel(pdfBox, mediaBox: mediaBox, scale: scale)
+
+                if !boxes.contains(where: { overlapping($0, pixelBox) }) {
+                    if verbose {
+                        let typeNames = matches.map(\.type.rawValue).joined(separator: ", ")
+                        print("  Redacting [AcroForm \(typeNames)]: \"\(fieldText)\"")
+                    }
+                    boxes.append(pixelBox)
+                }
+                break  // don't double-add for same annotation
+            }
+        }
+
         return boxes
+    }
+
+    /// Returns true if two rects overlap by more than 50% of the smaller rect's area.
+    private static func overlapping(_ a: CGRect, _ b: CGRect) -> Bool {
+        let intersection = a.intersection(b)
+        guard !intersection.isNull else { return false }
+        let area = intersection.width * intersection.height
+        let smaller = min(a.width * a.height, b.width * b.height)
+        return smaller > 0 && area / smaller > 0.5
     }
 
     /// Converts a rect in PDF page space (bottom-left origin) to bitmap pixel space (top-left origin).
