@@ -335,14 +335,16 @@ struct PDFRedactor {
 
 enum RedactError: LocalizedError {
     case cannotLoadPDF(String)
+    case cannotLoadImage(String)
     case renderFailed(Int)
     case saveFailed(String)
 
     var errorDescription: String? {
         switch self {
-        case .cannotLoadPDF(let path): return "Cannot load PDF: \(path)"
-        case .renderFailed(let page): return "Failed to render page \(page + 1)"
-        case .saveFailed(let path): return "Failed to save PDF to: \(path)"
+        case .cannotLoadPDF(let path):    return "Cannot load PDF: \(path)"
+        case .cannotLoadImage(let path):  return "Cannot load image: \(path)"
+        case .renderFailed(let page):     return "Failed to render page \(page + 1)"
+        case .saveFailed(let path):       return "Failed to save to: \(path)"
         }
     }
 }

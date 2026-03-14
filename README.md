@@ -1,12 +1,13 @@
 # redact-pdf
 
-A macOS command-line tool that automatically detects and redacts PII from PDF files. Produces a flattened image-only PDF — no hidden text layer.
+A macOS command-line tool that automatically detects and redacts PII from PDF files and images. Produces a flattened output — no hidden text layer.
 
 ## Features
 
 - Detects PII using regex (SSN, phone, email, credit card, zip code) and Apple's `NaturalLanguage` framework (names, addresses)
-- Uses `PDFKit` text extraction for digital PDFs and falls back to `Vision` OCR for scanned/image PDFs
-- Outputs a fully flattened PDF — `extract_text()` returns nothing
+- **PDFs**: uses `PDFKit` text extraction for digital PDFs and falls back to `Vision` OCR for scanned/image PDFs
+- **Images**: uses `Vision` OCR on any supported image format
+- PDF output is fully flattened — `extract_text()` returns nothing
 - Supports single file or batch directory processing
 
 ## Requirements
@@ -33,9 +34,12 @@ PREFIX=~/.local make install  # custom prefix
 **Single file**
 ```sh
 redact-pdf <input.pdf> <output.pdf> [--all] [--verbose]
+redact-pdf <input.png> <output.png> [--all] [--verbose]
 ```
 
-**Directory** — redacts all PDFs in the directory, writing `redacted_<name>.pdf` into `<directory>/output/`
+Supported image formats: `png`, `jpg`, `jpeg`, `tiff`, `tif`, `heic`, `heif`, `bmp`, `webp`
+
+**Directory** — redacts all PDFs and images in the directory, writing `redacted_<name>` into `<directory>/output/`
 ```sh
 redact-pdf <directory> [--all] [--verbose]
 ```
@@ -63,13 +67,16 @@ redact-pdf <directory> [--all] [--verbose]
 ## Examples
 
 ```sh
-# Single file — redact SSN, phone, email, credit card (default)
+# Single PDF — redact SSN, phone, email, credit card (default)
 redact-pdf report.pdf redacted.pdf
 
-# Single file — redact everything
+# Single image — redact everything
+redact-pdf scan.png redacted.png --all --verbose
+
+# Single PDF — redact everything
 redact-pdf report.pdf redacted.pdf --all --verbose
 
-# Directory — batch redact all PDFs
+# Directory — batch redact all PDFs and images
 redact-pdf ~/Documents/invoices
 
 # Directory — batch redact with all PII types
@@ -80,18 +87,25 @@ Directory output structure:
 ```
 invoices/
 ├── invoice-001.pdf
-├── invoice-002.pdf
+├── photo-id.png
 └── output/
     ├── redacted_invoice-001.pdf
-    └── redacted_invoice-002.pdf
+    └── redacted_photo-id.png
 ```
 
 ## How it works
 
+**PDFs**
 1. Each page is rendered to a high-resolution bitmap via `CoreGraphics`
 2. PII is located using `PDFKit`'s `findString` → `PDFSelection.bounds` (digital PDFs) or `Vision` OCR (scanned PDFs)
 3. Black rectangles are painted over each match
 4. Pages are saved as a new image-only PDF — the text layer is gone
+
+**Images**
+1. The image is loaded as a `CGImage`
+2. `Vision` OCR scans the image for text and locates PII
+3. Black rectangles are painted over each match
+4. The result is saved in the same format as the input
 
 ## Uninstall
 

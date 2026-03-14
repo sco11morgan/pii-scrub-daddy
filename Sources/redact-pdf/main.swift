@@ -6,13 +6,15 @@ func printUsage() {
     print("""
     Usage:
       redact-pdf <input.pdf> <output.pdf> [--all] [--verbose]
+      redact-pdf <input.png> <output.png> [--all] [--verbose]
       redact-pdf <directory>             [--all] [--verbose]
 
     Single file:
-      Redacts <input.pdf> and writes to <output.pdf>.
+      Redacts <input> and writes to <output>.
+      Supported formats: pdf, png, jpg, jpeg, tiff, tif, heic, heif, bmp, webp
 
     Directory:
-      Redacts all PDFs in <directory> and writes redacted_<name>.pdf
+      Redacts all PDFs and images in <directory> and writes redacted_<name>
       into <directory>/output/.
 
     Options:
@@ -21,6 +23,7 @@ func printUsage() {
 
     Examples:
       redact-pdf document.pdf redacted.pdf --all --verbose
+      redact-pdf photo.png redacted.png
       redact-pdf ~/Documents/invoices --verbose
     """)
 }
@@ -38,6 +41,24 @@ let types: Set<PIIType> = allTypes ? PIIType.all : PIIType.defaults
 args = args.filter { $0 != "--verbose" && $0 != "--all" }
 
 let fm = FileManager.default
+
+// MARK: - Helpers
+
+func isPDF(_ url: URL) -> Bool {
+    url.pathExtension.lowercased() == "pdf"
+}
+
+func isImage(_ url: URL) -> Bool {
+    ImageRedactor.supportedExtensions.contains(url.pathExtension.lowercased())
+}
+
+func redactFile(inputURL: URL, outputURL: URL) throws {
+    if isPDF(inputURL) {
+        try PDFRedactor.redact(inputURL: inputURL, outputURL: outputURL, types: types, verbose: verbose)
+    } else {
+        try ImageRedactor.redact(inputURL: inputURL, outputURL: outputURL, types: types, verbose: verbose)
+    }
+}
 
 // MARK: - Dispatch: directory vs single file
 
@@ -62,23 +83,23 @@ if args.count == 1 {
         exit(1)
     }
 
-    let pdfs = (try? fm.contentsOfDirectory(at: dirURL, includingPropertiesForKeys: nil))?.filter {
-        $0.pathExtension.lowercased() == "pdf"
+    let files = (try? fm.contentsOfDirectory(at: dirURL, includingPropertiesForKeys: nil))?.filter {
+        isPDF($0) || isImage($0)
     } ?? []
 
-    if pdfs.isEmpty {
-        print("No PDF files found in \(dirPath)")
+    if files.isEmpty {
+        print("No PDF or image files found in \(dirPath)")
         exit(0)
     }
 
     var failed = 0
-    for inputURL in pdfs.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+    for inputURL in files.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
         let outputName = "redacted_\(inputURL.lastPathComponent)"
         let outputURL  = outputDir.appendingPathComponent(outputName)
 
         if verbose { print("\n[\(inputURL.lastPathComponent)] → output/\(outputName)") }
         do {
-            try PDFRedactor.redact(inputURL: inputURL, outputURL: outputURL, types: types, verbose: verbose)
+            try redactFile(inputURL: inputURL, outputURL: outputURL)
             if !verbose { print("✓ \(inputURL.lastPathComponent) → output/\(outputName)") }
         } catch {
             fputs("✗ \(inputURL.lastPathComponent): \(error.localizedDescription)\n", stderr)
@@ -86,7 +107,7 @@ if args.count == 1 {
         }
     }
 
-    print("\nDone. \(pdfs.count - failed)/\(pdfs.count) files redacted.")
+    print("\nDone. \(files.count - failed)/\(files.count) files redacted.")
     exit(failed > 0 ? 1 : 0)
 
 } else if args.count == 2 {
@@ -101,9 +122,15 @@ if args.count == 1 {
         exit(1)
     }
 
+    guard isPDF(inputURL) || isImage(inputURL) else {
+        fputs("Error: unsupported file type '.\(inputURL.pathExtension)'\n", stderr)
+        fputs("Supported: pdf, \(ImageRedactor.supportedExtensions.sorted().joined(separator: ", "))\n", stderr)
+        exit(1)
+    }
+
     do {
         if verbose { print("Redacting \(inputPath) → \(outputPath) [\(types.map(\.rawValue).sorted().joined(separator: ", "))]") }
-        try PDFRedactor.redact(inputURL: inputURL, outputURL: outputURL, types: types, verbose: verbose)
+        try redactFile(inputURL: inputURL, outputURL: outputURL)
         print("Done.")
     } catch {
         fputs("Error: \(error.localizedDescription)\n", stderr)
